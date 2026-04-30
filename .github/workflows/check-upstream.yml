@@ -45,7 +45,7 @@ jobs:
 
       - name: Trigger Build
         # Compare tags. If they are different, trigger the build workflow
-        if: steps.upstream.outputs.tag != 'null' && steps.upstream.outputs.tag != steps.local.outputs.tag && steps.local.outputs.tag != 'null'
+        if: steps.upstream.outputs.tag != 'null' && steps.upstream.outputs.tag != steps.local.outputs.tag
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
