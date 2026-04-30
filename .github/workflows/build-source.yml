@@ -1,0 +1,64 @@
+name: Build and Release (Source)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Upstream version to build and package (e.g. 1.0.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-source-deb:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+        # For cross-compiling from source, you may need qemu/docker setups.
+        # This template assumes building natively on ubuntu-latest (amd64).
+        # Building for ARM may require setup-qemu-action.
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU (for ARM builds)
+        if: matrix.arch == 'arm64'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Load package config
+        id: config
+        run: |
+          source package.env
+          echo "package_name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
+          echo "upstream_repo=$UPSTREAM_REPO" >> $GITHUB_OUTPUT
+
+      - name: Build from Source and Package
+        run: |
+          bash scripts/build_source.sh ${{ steps.config.outputs.package_name }} ${{ inputs.version }} ${{ matrix.arch }} ${{ steps.config.outputs.upstream_repo }}
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-package-source-${{ matrix.arch }}
+          path: output/*.deb
+
+  release:
+    needs: build-source-deb
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ inputs.version }}
+          name: Release ${{ inputs.version }}
+          files: artifacts/*.deb
+          draft: false
+          prerelease: false

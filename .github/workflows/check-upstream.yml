@@ -1,0 +1,62 @@
+name: Check Upstream Release
+
+on:
+  schedule:
+    # Run once a day at midnight UTC
+    - cron: "0 0 * * *"
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  check-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Load package config
+        id: config
+        run: |
+          source package.env
+          echo "upstream_repo=$UPSTREAM_REPO" >> $GITHUB_OUTPUT
+
+      - name: Get latest upstream release
+        id: upstream
+        run: |
+          # Fetch the latest release tag from the upstream repository
+          LATEST_UPSTREAM=$(curl -s "https://api.github.com/repos/${{ steps.config.outputs.upstream_repo }}/releases/latest" | jq -r .tag_name)
+          if [ "$LATEST_UPSTREAM" = "null" ]; then
+            echo "Could not fetch upstream release. Does the repository exist or use GitHub Releases?"
+            exit 1
+          fi
+          # Strip 'v' prefix to get clean version
+          VERSION_CLEAN=${LATEST_UPSTREAM#v}
+          echo "version=$VERSION_CLEAN" >> $GITHUB_OUTPUT
+          echo "tag=$LATEST_UPSTREAM" >> $GITHUB_OUTPUT
+          echo "Found upstream version: $VERSION_CLEAN ($LATEST_UPSTREAM)"
+
+      - name: Get latest local release
+        id: local
+        run: |
+          # Fetch the latest release in THIS repository
+          LATEST_LOCAL=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/latest" | jq -r .tag_name || echo "none")
+          echo "tag=$LATEST_LOCAL" >> $GITHUB_OUTPUT
+          echo "Found local version: $LATEST_LOCAL"
+
+      - name: Trigger Build
+        # Compare tags. If they are different, trigger the build workflow
+        if: steps.upstream.outputs.tag != 'null' && steps.upstream.outputs.tag != steps.local.outputs.tag && steps.local.outputs.tag != 'null'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            console.log("Triggering build for version ${{ steps.upstream.outputs.version }}");
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'build-binary.yml',
+              ref: 'main',
+              inputs: {
+                version: '${{ steps.upstream.outputs.version }}'
+              }
+            });

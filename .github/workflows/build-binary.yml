@@ -1,0 +1,57 @@
+name: Build and Release (Binary)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Upstream version to package (e.g. 1.0.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-deb:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # Define architectures you want to build for
+        arch: [amd64, arm64]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Load package config
+        id: config
+        run: |
+          source package.env
+          echo "package_name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
+
+      - name: Build Debian Package
+        run: |
+          bash scripts/package_binary.sh ${{ steps.config.outputs.package_name }} ${{ inputs.version }} ${{ matrix.arch }}
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-package-${{ matrix.arch }}
+          path: output/*.deb
+
+  release:
+    needs: build-deb
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ inputs.version }}
+          name: Release ${{ inputs.version }}
+          files: artifacts/*.deb
+          draft: false
+          prerelease: false
