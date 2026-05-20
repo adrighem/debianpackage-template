@@ -27,7 +27,7 @@ jobs:
         id: upstream
         run: |
           # Fetch the latest release tag from the upstream repository
-          LATEST_UPSTREAM=$(curl -s "https://api.github.com/repos/${{ steps.config.outputs.upstream_repo }}/releases/latest" | jq -r .tag_name)
+          LATEST_UPSTREAM=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "https://api.github.com/repos/${{ steps.config.outputs.upstream_repo }}/releases/latest" | jq -r .tag_name)
           if [ "$LATEST_UPSTREAM" = "null" ]; then
             echo "Could not fetch upstream release. Does the repository exist or use GitHub Releases?"
             exit 1
